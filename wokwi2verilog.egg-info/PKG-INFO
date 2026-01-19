@@ -1,0 +1,22 @@
+Metadata-Version: 2.2
+Name: wokwi2verilog
+Version: 1.0.0
+Summary: Universal compiler for Wokwi C chips to Verilog
+Home-page: https://github.com/lazerkatsweirdstuff/wokwi2verilog
+Author: Lazer Kat
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.7
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Dynamic: author
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: requires-python
+Dynamic: summary
+
+# wokwi2verilog
+A python program to convert Wokwi C ICs into Verilog ICs
