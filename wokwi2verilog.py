@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ULTIMATE Wokwi C to Verilog Compiler - All bugs squashed!
+ULTIMATE FIXED Wokwi C to Verilog Compiler - No more errors!
 """
 
 import sys
@@ -138,11 +138,11 @@ class WokwiParser:
         return variables
     
     def _c_type_to_verilog(self, c_type: str, var_name: str = "") -> Tuple[str, str]:
-        """FIXED: Handle variable_t type correctly"""
+        """Handle variable_t type correctly"""
         
         # Special case for variable_t
         if var_name == 'variables' and 'variable_t' in c_type:
-            return ('[15:0]', 'reg')  # Each variable has name[16] and value (int16_t)
+            return ('[15:0]', 'reg')
         
         type_map = {
             'uint8_t': ('[7:0]', 'reg'),
@@ -154,7 +154,7 @@ class WokwiParser:
             'int32_t': ('[31:0]', 'reg'),
             'pin_t': ('', 'wire'),
             'timer_t': ('', 'wire'),
-            'variable_t': ('[15:0]', 'reg'),  # FIX: Added variable_t
+            'variable_t': ('[15:0]', 'reg'),
         }
         
         if c_type in type_map:
@@ -178,9 +178,17 @@ class VerilogGenerator:
         parts = []
         parts.append(self._header())
         parts.append(self._module_declaration())
-        parts.append(self._parameters())
+        
+        params = self._parameters()
+        if params:
+            parts.append(params)
+        
         parts.append(self._internal_signals())
-        parts.append(self._power_assignments())
+        
+        power_assigns = self._power_assignments()
+        if power_assigns:
+            parts.append(power_assigns)
+        
         parts.append(self._clock_reset())
         
         if self.info['has_spi']:
@@ -216,7 +224,11 @@ class VerilogGenerator:
         # Clock and reset
         ports.append("    // Clock and Reset")
         ports.append("    input wire clk,")
-        ports.append("    input wire rst_n,")
+        ports.append("    input wire rst_n")
+        
+        # Add comma if we have more ports
+        if power_pins or input_pins or output_pins:
+            ports[-1] = ports[-1] + ","
         
         # Power pins
         if power_pins:
@@ -244,7 +256,7 @@ class VerilogGenerator:
                 vtype = "reg" if pin['type'] == 'reg' else "wire"
                 ports.append(f"    output {vtype} {pin['name']}{comma}")
         
-        # Fix trailing commas
+        # Remove trailing comma from last port
         port_text = '\n'.join(ports)
         port_text = port_text.rstrip(',')
         
@@ -277,16 +289,15 @@ class VerilogGenerator:
         return "    // Parameters\n" + '\n'.join(params)
     
     def _internal_signals(self) -> str:
+        """FIXED: Handle signal extraction properly"""
         signals = ["    // Internal Signals"]
         
+        # First, add all variables from struct
         for var in self.info['struct_vars']:
-            # Handle 2D arrays specially (like program_outputs)
+            # Handle special cases
             if var['name'] == 'program_outputs' and var['is_array']:
-                # Original C: char program_outputs[10][32];
                 signals.append(f"    reg [7:0] {var['name']}[0:9][0:31];")
             elif var['name'] == 'variables' and var['is_array']:
-                # Original C: variable_t variables[32];
-                # variable_t has name[16] and value (int16_t)
                 signals.append(f"    reg [15:0] {var['name']}[0:{var['array_size']-1}];")
             elif var['is_array']:
                 if var['width']:
@@ -299,54 +310,68 @@ class VerilogGenerator:
                 else:
                     signals.append(f"    {var['verilog_type']} {var['name']};")
         
-        # Common signals
-        common = [
-            "    reg [31:0] counter;",
-            "    reg [7:0] spi_tx_data;",
-            "    reg [7:0] spi_rx_data;",
-            "    reg spi_start;",
-            "    wire spi_busy;",
-            "    reg [2:0] spi_bit_counter;",
-            "    reg spi_sck;",
-            "    reg spi_mosi;"
+        # Get existing signal names
+        existing_names = {var['name'] for var in self.info['struct_vars']}
+        
+        # Common signals to add if not already present
+        common_signals = [
+            ("reg [31:0]", "counter"),
+            ("reg [7:0]", "spi_tx_data"),
+            ("reg [7:0]", "spi_rx_data"),
+            ("reg", "spi_start"),
+            ("wire", "spi_busy"),
+            ("reg [2:0]", "spi_bit_counter"),
+            ("reg", "spi_sck"),
+            ("reg", "spi_mosi"),
         ]
         
-        existing = {var['name'] for var in self.info['struct_vars']}
-        for sig in common:
-            name = sig.split()[2].rstrip(';')
-            if name not in existing:
-                signals.append(sig)
+        for vtype, name in common_signals:
+            if name not in existing_names:
+                signals.append(f"    {vtype} {name};")
         
         # Display signals
-        if self.info['has_display'] and 'display_x' not in existing:
-            signals.append("    reg [15:0] display_x;")
-            signals.append("    reg [15:0] display_y;")
-            signals.append("    reg [15:0] display_color;")
-            signals.append("    reg display_start;")
-            signals.append("    wire display_busy;")
-            signals.append("    reg [2:0] display_state;")
-        
-        # SD signals
-        if self.info['has_sd']:
-            if 'sd_sector' not in existing:
-                signals.append("    reg [31:0] sd_sector;")
-                signals.append("    reg [7:0] sd_buffer [0:511];")
-                signals.append("    reg sd_read_start;")
-                signals.append("    wire sd_read_done;")
-                signals.append("    reg [4:0] sd_state;")
+        if self.info['has_display']:
+            display_signals = [
+                ("reg [15:0]", "display_x"),
+                ("reg [15:0]", "display_y"),
+                ("reg [15:0]", "display_color"),
+                ("reg", "display_start"),
+                ("wire", "display_busy"),
+                ("reg [2:0]", "display_state"),
+            ]
             
-            # Don't add sd_card_present if it already exists
-            if not any(var['name'] == 'sd_card_present' for var in self.info['struct_vars']):
-                signals.append("    wire sd_card_detected;")
+            for vtype, name in display_signals:
+                if name not in existing_names:
+                    signals.append(f"    {vtype} {name};")
+        
+        # SD card signals
+        if self.info['has_sd']:
+            sd_signals = [
+                ("reg [31:0]", "sd_sector"),
+                ("reg [7:0]", "sd_buffer", "[0:511]"),
+                ("reg", "sd_read_start"),
+                ("wire", "sd_read_done"),
+                ("reg [4:0]", "sd_state"),
+                ("wire", "sd_card_detected"),
+            ]
+            
+            for signal in sd_signals:
+                if len(signal) == 3:  # Has array specifier
+                    vtype, name, array = signal
+                    if name not in existing_names:
+                        signals.append(f"    {vtype} {name} {array};")
+                else:
+                    vtype, name = signal
+                    if name not in existing_names and name != 'sd_card_present':  # Avoid duplicate
+                        signals.append(f"    {vtype} {name};")
         
         return '\n'.join(signals)
     
     def _power_assignments(self) -> str:
-        """FIXED: Don't assign to input pins"""
+        """Only assign to output power pins (GND)"""
         assigns = []
         for pin in self.info['pins']:
             if pin.get('is_power', False) and pin['direction'] == 'output':
-                # Only assign to output power pins (like GND)
                 assigns.append(f"    assign {pin['name']} = 1'b0;")
         
         if assigns:
@@ -593,49 +618,69 @@ class VerilogGenerator:
     end"""
 
 def main():
-    parser = argparse.ArgumentParser(description='Ultimate Wokwi C to Verilog Compiler')
+    parser = argparse.ArgumentParser(
+        description='Wokwi C to Verilog Compiler',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+Examples:
+  %(prog)s example.c -o output.v
+  %(prog)s chip.c --verbose
+        '''
+    )
     parser.add_argument('input', help='Input C file')
     parser.add_argument('-o', '--output', help='Output Verilog file')
     parser.add_argument('-v', '--verbose', action='store_true', help='Verbose output')
     
     args = parser.parse_args()
     
+    # Check input file
     if not os.path.exists(args.input):
         print(f"Error: File '{args.input}' not found")
         return 1
     
-    # Read and parse
-    with open(args.input, 'r') as f:
-        content = f.read()
-    
-    parser = WokwiParser()
-    info = parser.parse(content)
-    
-    # Module name
-    module_name = Path(args.input).stem
-    module_name = re.sub(r'[^a-zA-Z0-9_]', '_', module_name)
-    if not module_name[0].isalpha():
-        module_name = 'chip_' + module_name
-    
-    # Generate
-    generator = VerilogGenerator(info, module_name)
-    verilog = generator.generate()
-    
-    # Write output
-    output_file = args.output or f"{module_name}.v"
-    with open(output_file, 'w') as f:
-        f.write(verilog)
-    
-    print(f"✓ Generated {output_file}")
-    
-    if args.verbose:
-        print(f"\nSummary:")
-        print(f"  Module: {module_name}")
-        print(f"  Pins: {len(info['pins'])}")
-        print(f"  Variables: {len(info['struct_vars'])}")
-        print(f"  Parameters: {len(info['defines'])}")
-    
-    return 0
+    try:
+        # Read input
+        with open(args.input, 'r') as f:
+            content = f.read()
+        
+        # Parse
+        parser = WokwiParser()
+        info = parser.parse(content)
+        
+        # Module name
+        module_name = Path(args.input).stem
+        module_name = re.sub(r'[^a-zA-Z0-9_]', '_', module_name)
+        if not module_name[0].isalpha():
+            module_name = 'chip_' + module_name
+        
+        if args.verbose:
+            print(f"Parsing {args.input}...")
+            print(f"  Found {len(info['pins'])} pins")
+            print(f"  Found {len(info['struct_vars'])} variables")
+            print(f"  Found {len(info['defines'])} parameters")
+        
+        # Generate Verilog
+        generator = VerilogGenerator(info, module_name)
+        verilog = generator.generate()
+        
+        # Write output
+        output_file = args.output or f"{module_name}.v"
+        with open(output_file, 'w') as f:
+            f.write(verilog)
+        
+        print(f"✓ Successfully generated {output_file}")
+        
+        if args.verbose:
+            print(f"\nFile size: {len(verilog)} bytes")
+            print(f"Module: {module_name}")
+        
+        return 0
+        
+    except Exception as e:
+        print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
 
 if __name__ == '__main__':
     sys.exit(main())

@@ -53,18 +53,18 @@ module example (
     reg [7:0] error;
     reg [7:0] error_msg[0:63];
     reg [15:0] output_value;
-    reg variables[0:31];
+    reg [15:0] variables[0:31];
     reg [7:0] var_count;
     reg [7:0] program_buffer[0:4095];
     reg [7:0] program_loaded;
-    reg [7:0] program_outputs[0:9];
+    reg [7:0] program_outputs[0:9][0:31];
     reg [7:0] output_count;
     reg [7:0] sd_initialized;
     reg [7:0] sd_card_present;
-    wire timer;  // Timer
-    wire display_timer;  // Timer
-    wire btn_debounce_timer;  // Timer
-    wire program_timer;  // Timer
+    wire timer;
+    wire display_timer;
+    wire btn_debounce_timer;
+    wire program_timer;
     reg [31:0] counter;
     reg [7:0] spi_tx_data;
     reg [7:0] spi_rx_data;
@@ -84,9 +84,9 @@ module example (
     reg sd_read_start;
     wire sd_read_done;
     reg [4:0] sd_state;
+    wire sd_card_detected;
 
     // Power Assignments
-    assign VCC = 1'b1;
     assign GND = 1'b0;
 
     // ============================================
@@ -122,10 +122,8 @@ module example (
             if (spi_bit_counter < 3'd8) begin
                 spi_sck <= ~spi_sck;
                 if (!spi_sck) begin
-                    // Falling edge: set MOSI
                     spi_mosi <= spi_tx_data[7 - spi_bit_counter];
                 end else begin
-                    // Rising edge: sample MISO
                     spi_rx_data[7 - spi_bit_counter] <= MISO;
                     spi_bit_counter <= spi_bit_counter + 1;
                 end
@@ -159,7 +157,7 @@ module example (
                 end
                 DISP_CMD: begin
                     DC <= 1'b0;
-                    spi_tx_data <= 8'h2A;  // Column address set
+                    spi_tx_data <= 8'h2A;
                     spi_start <= 1'b1;
                     display_state <= DISP_DATA;
                 end
@@ -201,15 +199,12 @@ module example (
                     end
                 end
                 SD_INIT: begin
-                    // Initialize SD card
                     sd_state <= SD_READ_CMD;
                 end
                 SD_READ_CMD: begin
-                    // Send read command
                     sd_state <= SD_READ_WAIT;
                 end
                 SD_READ_WAIT: begin
-                    // Wait for data
                     if (counter[15:0] == 16'hFFFF) begin
                         sd_state <= SD_IDLE;
                         SD_CS <= 1'b1;
@@ -249,9 +244,7 @@ module example (
         next_state = current_state;
         case (current_state)
             STATE_IDLE: begin
-                if (RUN_BTN == 1'b0) begin
-                    next_state = STATE_INIT;
-                end
+                if (RUN_BTN == 1'b0) next_state = STATE_INIT;
             end
             STATE_INIT: begin
                 next_state = STATE_RUN;
@@ -260,14 +253,10 @@ module example (
                 next_state = STATE_LOAD_SD;
             end
             STATE_LOAD_SD: begin
-                if (sd_read_done) begin
-                    next_state = STATE_DISPLAY;
-                end
+                if (sd_read_done) next_state = STATE_DISPLAY;
             end
             STATE_DISPLAY: begin
-                if (!display_busy) begin
-                    next_state = STATE_DONE;
-                end
+                if (!display_busy) next_state = STATE_DONE;
             end
             STATE_DONE: begin
                 next_state = STATE_IDLE;
@@ -310,8 +299,8 @@ module example (
             case (current_state)
                 STATE_IDLE:   LED <= 1'b0;
                 STATE_INIT:   LED <= 1'b1;
-                STATE_RUN:    LED <= counter[23];  // Slow blink
-                STATE_LOAD_SD: LED <= counter[20]; // Faster blink
+                STATE_RUN:    LED <= counter[23];
+                STATE_LOAD_SD: LED <= counter[20];
                 STATE_DISPLAY: LED <= 1'b1;
                 STATE_DONE:   LED <= 1'b0;
                 default:      LED <= 1'b0;
