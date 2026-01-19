@@ -1,2 +1,0 @@
-[console_scripts]
-wokwi2verilog = wokwi2verilog.cli:main

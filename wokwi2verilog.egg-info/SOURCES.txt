@@ -1,8 +1,0 @@
-LICENSE
-README.md
-setup.py
-wokwi2verilog.egg-info/PKG-INFO
-wokwi2verilog.egg-info/SOURCES.txt
-wokwi2verilog.egg-info/dependency_links.txt
-wokwi2verilog.egg-info/entry_points.txt
-wokwi2verilog.egg-info/top_level.txt
